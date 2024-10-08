@@ -11,29 +11,68 @@ CAMINHO_ARQUIVO = "teste_produtos.xlsx"  # Substitua pelo caminho do seu arquivo
 def carregar_produtos_excel(caminho_arquivo):
     return pd.read_excel("teste_produtos.xlsx")
 
-# Função para gerar o PDF com todos os produtos
+# Função para aplicar o estilo CSS no campo de pesquisa
+def aplicar_estilo_css():
+    st.markdown(
+        """
+        <style>
+        .stTextInput > div > input {
+            background-color: #f0f0f0;
+            border: 2px solid #00ccff;
+            padding: 10px;
+            font-size: 16px;
+        }
+        </style>
+        """,
+        unsafe_allow_html=True
+    )
+
+# Função para gerar o PDF
 def gerar_pdf(produtos):
+    # Criação do objeto PDF
     pdf = FPDF()
-    pdf.set_auto_page_break(auto=True, margin=15)
+    pdf.set_auto_page_break(auto=True, margin=10)
     pdf.add_page()
-    pdf.set_font("Arial", size=12)
 
-    pdf.cell(200, 10, txt="Relatório de Validade de Produto", ln=True, align="C")
-    pdf.ln(10)
+    # Definindo fonte para o PDF
+    pdf.set_font("Arial", size=10)
 
-    # Adicionar data e hora de geração
-    data_hora_geracao = datetime.now().strftime('%d/%m/%Y %H:%M:%S')
-    pdf.cell(200, 10, txt=f"Data e Hora de Geração: {data_hora_geracao}", ln=True)
-    pdf.ln(10)
+    # Título do documento
+    pdf.cell(200, 10, txt="Relatório de Validade de Produtos", ln=True, align="C")
+    pdf.ln(5)  # Espaçamento
+
+    # Adicionando informações ao PDF
+    data_atual = datetime.now().strftime('%d/%m/%Y %H:%M')
+    pdf.cell(200, 10, txt=f"Relatório gerado em: {data_atual}", ln=True)
+    pdf.ln(5)
 
     for produto in produtos:
-        pdf.cell(200, 10, txt=f"Código do Produto: {produto['codigo']}", ln=True)
-        pdf.cell(200, 10, txt=f"Descrição: {produto['descricao']}", ln=True)  # Adicionado descrição
-        pdf.cell(200, 10, txt=f"Data de Validade: {produto['validade'].strftime('%d/%m/%Y')}", ln=True)
+        pdf.cell(200, 10, txt=f"Código: {produto['codigo']}", ln=True)
+        pdf.cell(200, 10, txt=f"Descrição: {produto['descricao']}", ln=True)
+        pdf.cell(200, 10, txt=f"Validade: {produto['validade'].strftime('%d/%m/%Y')}", ln=True)
         pdf.cell(200, 10, txt=f"Quantidade: {produto['quantidade']}", ln=True)
-        pdf.cell(200, 10, txt=f"Promoção: {produto['promocao']}", ln=True)
-        pdf.ln(10)
 
+        # Calcular dias para validade
+        dias_faltando = (produto['validade'] - datetime.now()).days
+
+        # Verificar se a validade é menor que 15 dias (vermelho)
+        if dias_faltando < 15:
+            pdf.set_text_color(255, 0, 0)  # Vermelho
+            pdf.cell(200, 10, txt=f"Dias para validade: {dias_faltando} dias", ln=True)
+
+        # Verificar se a validade está entre 16 e 30 dias (amarelo)
+        elif 16 <= dias_faltando <= 30:
+            pdf.set_text_color(255, 165, 0)  # Amarelo
+            pdf.cell(200, 10, txt=f"Dias para validade: {dias_faltando} dias", ln=True)
+
+        # Validade acima de 30 dias (normal)
+        else:
+            pdf.set_text_color(0, 0, 0)  # Preto
+            pdf.cell(200, 10, txt=f"Dias para validade: {dias_faltando} dias", ln=True)
+
+        pdf.ln(5)
+
+    # Salvando o PDF em um arquivo
     pdf_output_path = "relatorio_validade.pdf"
     pdf.output(pdf_output_path)
 
@@ -46,14 +85,12 @@ def app():
     # Carregar o arquivo Excel automaticamente
     df_produtos = carregar_produtos_excel(CAMINHO_ARQUIVO)
 
+    # Aplicar o estilo CSS ao campo de pesquisa
+    aplicar_estilo_css()
+
     # Recuperar lista de produtos da sessão ou inicializar se não existir
     if "produtos" not in st.session_state:
         st.session_state.produtos = []
-    
-    # Recuperar produtos informados do estado da sessão
-    if "produtos_inicializados" not in st.session_state:
-        st.session_state.produtos = []  # Inicializar a lista de produtos
-        st.session_state.produtos_inicializados = True  # Indicar que os produtos foram inicializados
 
     # Inicializar campos se não estiverem definidos
     if "codigo_barras_produto" not in st.session_state:
@@ -62,12 +99,10 @@ def app():
         st.session_state.descricao_produto = ""
     if "quantidade" not in st.session_state:
         st.session_state.quantidade = 1
-    if "promocao" not in st.session_state:
-        st.session_state.promocao = "Não"
     if "validade_input" not in st.session_state:
         st.session_state.validade_input = datetime.today()
 
-    # Entrada de texto para código de barras ou descrição
+    # Entrada de texto para código de barras ou descrição com novo estilo
     pesquisa_produto = st.text_input("Pesquisar produto por código de barras ou descrição")
 
     # Verificar se a busca corresponde a um código de barras ou descrição
@@ -97,7 +132,6 @@ def app():
     st.session_state.codigo_barras_produto = st.text_input("Código de Barras", value=st.session_state.codigo_barras_produto)
     st.session_state.descricao_produto = st.text_input("Descrição do Produto", value=st.session_state.descricao_produto)
     st.session_state.quantidade = st.number_input("Quantidade do Produto", min_value=1, value=st.session_state.quantidade)
-    st.session_state.promocao = st.radio("Foi feita promoção com este produto?", ("Sim", "Não"), index=1 if st.session_state.promocao == "Não" else 0)
     st.session_state.validade_input = st.date_input("Data de Validade", min_value=datetime.today(), value=st.session_state.validade_input)
 
     # Exibir lista de produtos cadastrados em forma de DataFrame
@@ -108,6 +142,7 @@ def app():
         df_produtos_cadastrados = pd.DataFrame(st.session_state.produtos)
 
         # Ordenar o DataFrame pela coluna 'validade' em ordem decrescente
+        df_produtos_cadastrados['dias_para_validade'] = df_produtos_cadastrados['validade'].apply(lambda x: (x - datetime.now()).days)
         df_produtos_cadastrados.sort_values(by='validade', ascending=False, inplace=True)
 
         # Exibir DataFrame como uma tabela interativa
@@ -115,25 +150,29 @@ def app():
 
     # Botão para adicionar o produto à lista
     if st.button("Adicionar Produto"):
-        if st.session_state.codigo_barras_produto and st.session_state.descricao_produto and st.session_state.validade_input:
-            produto = {
-                "codigo": st.session_state.codigo_barras_produto,
-                "descricao": st.session_state.descricao_produto,  # Adicionando descrição
-                "validade": datetime.strptime(str(st.session_state.validade_input), '%Y-%m-%d'),
-                "quantidade": st.session_state.quantidade,
-                "promocao": st.session_state.promocao,
-            }
-            st.session_state.produtos.append(produto)
-            st.success(f"Produto {st.session_state.codigo_barras_produto} adicionado com sucesso!")
-
-            # Limpar campos após adicionar
-            st.session_state.codigo_barras_produto = ""
-            st.session_state.descricao_produto = ""
-            st.session_state.quantidade = 1
-            st.session_state.promocao = "Não"
-            st.session_state.validade_input = datetime.today()
+        # Verificar se o produto já foi adicionado
+        produto_existe = any(produto['codigo'] == st.session_state.codigo_barras_produto for produto in st.session_state.produtos)
+        
+        if produto_existe:
+            st.error(f"O produto com o código {st.session_state.codigo_barras_produto} já foi adicionado.")
         else:
-            st.error("Por favor, preencha os campos obrigatórios.")
+            if st.session_state.codigo_barras_produto and st.session_state.descricao_produto and st.session_state.validade_input:
+                produto = {
+                    "codigo": st.session_state.codigo_barras_produto,
+                    "descricao": st.session_state.descricao_produto,  # Adicionando descrição
+                    "validade": datetime.strptime(str(st.session_state.validade_input), '%Y-%m-%d'),
+                    "quantidade": st.session_state.quantidade,
+                }
+                st.session_state.produtos.append(produto)
+                st.success(f"Produto {st.session_state.codigo_barras_produto} adicionado com sucesso!")
+
+                # Limpar campos após adicionar
+                st.session_state.codigo_barras_produto = ""
+                st.session_state.descricao_produto = ""
+                st.session_state.quantidade = 1
+                st.session_state.validade_input = datetime.today()
+            else:
+                st.error("Por favor, preencha os campos obrigatórios.")
 
     # Botão para gerar o PDF com todos os produtos
     if st.button("Gerar PDF"):
@@ -150,16 +189,7 @@ def app():
                     mime="application/pdf"
                 )
         else:
-            st.error("Nenhum produto cadastrado para gerar o PDF.")
-
-    # Botão para limpar campos
-    if st.button("Limpar Campos"):
-        st.session_state.codigo_barras_produto = ""
-        st.session_state.descricao_produto = ""
-        st.session_state.quantidade = 1
-        st.session_state.promocao = "Não"
-        st.session_state.validade_input = datetime.today()
-        st.success("Campos limpos com sucesso!")
+            st.error("Nenhum produto informado para gerar o PDF.")
 
 if __name__ == "__main__":
     app()
